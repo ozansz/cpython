@@ -333,6 +333,9 @@ meth_hash(PyCFunctionObject *a)
     return x;
 }
 
+static PyNumberMethods meth_number_methods = {
+    .nb_add = _PyFunction_Compose
+};
 
 PyTypeObject PyCFunction_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -345,7 +348,7 @@ PyTypeObject PyCFunction_Type = {
     0,                                          /* tp_setattr */
     0,                                          /* tp_as_async */
     (reprfunc)meth_repr,                        /* tp_repr */
-    0,                                          /* tp_as_number */
+    &meth_number_methods,                       /* tp_as_number */
     0,                                          /* tp_as_sequence */
     0,                                          /* tp_as_mapping */
     (hashfunc)meth_hash,                        /* tp_hash */
