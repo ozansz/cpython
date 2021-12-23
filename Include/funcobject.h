@@ -59,6 +59,8 @@ PyAPI_FUNC(int) PyFunction_SetClosure(PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) PyFunction_GetAnnotations(PyObject *);
 PyAPI_FUNC(int) PyFunction_SetAnnotations(PyObject *, PyObject *);
 
+PyAPI_FUNC(PyObject*) _PyFunction_Compose(PyObject*, PyObject*);
+
 #ifndef Py_LIMITED_API
 PyAPI_FUNC(PyObject *) _PyFunction_Vectorcall(
     PyObject *func,

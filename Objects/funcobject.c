@@ -632,6 +632,218 @@ func_descr_get(PyObject *func, PyObject *obj, PyObject *type)
     return PyMethod_New(func, obj);
 }
 
+static int
+get_local_function_name(PyObject *func, const char **name)
+{
+    PyObject *locals = PyEval_GetLocals();
+
+    if (locals == NULL)
+        return -1;
+    
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+
+    while (PyDict_Next(locals, &pos, &key, &value)) {
+        if (value == func) {
+            *name = PyUnicode_AsUTF8(key);
+
+            if (*name == NULL)
+                return -1;
+
+            return 0;
+        }
+    }
+
+    *name = NULL;
+    return 0;
+}
+
+uint64_t _pyfunction_comp_lambda_id_counter = 0;
+
+static PyObject*
+func_next_comp_lambda_name(void)
+{
+    return PyUnicode_FromFormat("___comp_fn_%llu___", _pyfunction_comp_lambda_id_counter++);
+}
+
+PyObject*
+_PyFunction_Compose(PyObject* left, PyObject* right)
+{   
+    const char *func_name_left, *func_name_right;
+
+    if (PyCFunction_Check(left)) {
+        func_name_left = ((PyCFunctionObject*)left)->m_ml->ml_name;
+    } else if (get_local_function_name(left, &func_name_left) < 0) {
+        return NULL;
+    }
+    if (func_name_left == NULL) {
+        if (PyFunction_Check(left)) {
+            PyFunctionObject *left_as_func = (PyFunctionObject*) left;
+
+            if ((left_as_func->func_qualname != NULL) && PyUnicode_CheckExact(left_as_func->func_qualname) && (PyUnicode_CompareWithASCIIString(left_as_func->func_qualname, "<lambda>") == 0)) {
+                PyObject *func_name_left_as_obj = func_next_comp_lambda_name();
+                
+                if (func_name_left_as_obj == NULL)
+                    return NULL;
+
+                func_name_left = PyUnicode_AsUTF8(func_name_left_as_obj);
+                
+                if (func_name_left == NULL)
+                    return NULL;
+
+                PyObject *new_lambda_function = PyFunction_NewWithQualName(PyFunction_GET_CODE(left), PyEval_GetGlobals(), func_name_left_as_obj);
+
+                if (new_lambda_function == NULL) {
+                    Py_DECREF(func_name_left_as_obj);
+                    return NULL;
+                }
+
+                PyObject *locals = PyEval_GetLocals();
+
+                if (locals == NULL) {
+                    Py_DECREF(func_name_left_as_obj);
+                    Py_DECREF(new_lambda_function);
+                    return NULL;
+                }
+
+                int err;
+                if (PyDict_CheckExact(locals))
+                    err = PyDict_SetItem(locals, func_name_left_as_obj, new_lambda_function);
+                else
+                    err = PyObject_SetItem(locals, func_name_left_as_obj, new_lambda_function);
+    
+                if (err != 0) {
+                    Py_DECREF(func_name_left_as_obj);
+                    Py_DECREF(new_lambda_function);
+
+                    return NULL;
+                }
+            } else {
+                PyObject *tmp_str = PyUnicode_FromFormat("%U.%U", left_as_func->func_module, left_as_func->func_name);
+                
+                if (tmp_str == NULL)
+                    return NULL;
+
+                func_name_left = PyUnicode_AsUTF8(tmp_str);
+                
+                if (func_name_left == NULL)
+                    return NULL;
+            }
+        } else {
+            PyErr_Format(PyExc_ValueError,
+                "Could not fetch the name of the LHS function '%s'.", \
+                PyUnicode_AsUTF8(left->ob_type->tp_repr(left)));
+            return NULL; 
+        }   
+    }
+
+    if (PyCFunction_Check(right)) {
+        func_name_right = ((PyCFunctionObject*)right)->m_ml->ml_name;
+    } else if (get_local_function_name(right, &func_name_right) < 0) {
+        return NULL;
+    }
+    if (func_name_right == NULL) {
+        if (PyFunction_Check(right)) {
+            PyFunctionObject *right_as_func = (PyFunctionObject*) right;
+
+            if ((right_as_func->func_qualname != NULL) && PyUnicode_CheckExact(right_as_func->func_qualname) && (PyUnicode_CompareWithASCIIString(right_as_func->func_qualname, "<lambda>") == 0)) {
+                PyObject *func_name_right_as_obj = func_next_comp_lambda_name();
+                
+                if (func_name_right_as_obj == NULL)
+                    return NULL;
+
+                func_name_right = PyUnicode_AsUTF8(func_name_right_as_obj);
+                
+                if (func_name_right == NULL)
+                    return NULL;
+
+                PyObject *new_lambda_function = PyFunction_NewWithQualName(PyFunction_GET_CODE(right), PyEval_GetGlobals(), func_name_right_as_obj);
+
+                if (new_lambda_function == NULL) {
+                    Py_DECREF(func_name_right_as_obj);
+                    return NULL;
+                }
+
+                PyObject *locals = PyEval_GetLocals();
+
+                if (locals == NULL) {
+                    Py_DECREF(func_name_right_as_obj);
+                    Py_DECREF(new_lambda_function);
+                    return NULL;
+                }
+
+                int err;
+                if (PyDict_CheckExact(locals))
+                    err = PyDict_SetItem(locals, func_name_right_as_obj, new_lambda_function);
+                else
+                    err = PyObject_SetItem(locals, func_name_right_as_obj, new_lambda_function);
+    
+                if (err != 0) {
+                    Py_DECREF(func_name_right_as_obj);
+                    Py_DECREF(new_lambda_function);
+
+                    return NULL;
+                }
+            } else {
+                PyObject *tmp_str = PyUnicode_FromFormat("%U.%U", right_as_func->func_module, right_as_func->func_name);
+                
+                if (tmp_str == NULL)
+                    return NULL;
+
+                func_name_right = PyUnicode_AsUTF8(tmp_str);
+                
+                if (func_name_right == NULL)
+                    return NULL;
+            }
+        } else {
+            PyErr_Format(PyExc_ValueError,
+                "Could not fetch the name of the RHS function '%s'.", \
+                PyUnicode_AsUTF8(right->ob_type->tp_repr(right)));
+            return NULL; 
+        }
+    }
+
+    PyObject *comp_lambda_name = func_next_comp_lambda_name();
+
+    if (comp_lambda_name == NULL)
+        return NULL;
+
+    const char *comp_lambda_name_as_str = PyUnicode_AsUTF8(comp_lambda_name);
+    
+    if (comp_lambda_name_as_str == NULL) {
+        Py_DECREF(comp_lambda_name);
+        return NULL;
+    }
+    
+    PyObject *lambda_expr = PyUnicode_FromFormat("%s = lambda *args, **kwargs: %s(%s(*args, **kwargs))", comp_lambda_name_as_str, func_name_left, func_name_right);
+
+    if (lambda_expr == NULL) {
+        Py_DECREF(comp_lambda_name);
+        return NULL;
+    }
+
+    const char *lambda_expr_as_str = PyUnicode_AsUTF8(lambda_expr);
+
+    if (lambda_expr_as_str == NULL) {
+        Py_DECREF(comp_lambda_name);
+        Py_DECREF(lambda_expr);
+        return NULL;
+    }
+
+    PyObject *v = PyRun_String(lambda_expr_as_str, Py_file_input, PyEval_GetGlobals(), PyEval_GetLocals());
+
+    if (v == NULL)
+        return NULL;
+
+    Py_DECREF(v);
+
+    return PyRun_String(comp_lambda_name_as_str, Py_eval_input, PyEval_GetGlobals(), PyEval_GetLocals());
+}
+
+static PyNumberMethods func_number_methods = {
+    .nb_add = _PyFunction_Compose
+};
+
 PyTypeObject PyFunction_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "function",
@@ -643,7 +855,7 @@ PyTypeObject PyFunction_Type = {
     0,                                          /* tp_setattr */
     0,                                          /* tp_as_async */
     (reprfunc)func_repr,                        /* tp_repr */
-    0,                                          /* tp_as_number */
+    &func_number_methods,                        /* tp_as_number */
     0,                                          /* tp_as_sequence */
     0,                                          /* tp_as_mapping */
     0,                                          /* tp_hash */
